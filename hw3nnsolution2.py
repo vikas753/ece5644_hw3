@@ -107,7 +107,7 @@ def Experiment():
     num_components = KfoldCrossValidation(filedataX[0:validationLength],filedataY[0:validationLength],labels,10)    
     plt.scatter(filedataX, filedataY, c=labels, s=40, cmap='viridis')
     plt.figure()    
-    gmm = GaussianMixture(n_components=4).fit(data_train)
+    gmm = GaussianMixture(n_components=4,max_iter=1000,n_init=100,covariance_type='spherical').fit(data_train)
     labels_out = gmm.predict(data_train)
     num_error = 0
     

@@ -12,12 +12,11 @@ class Net(nn.Module):
     def __init__(self,num_perceptrons,num_inputs):
         super(Net, self).__init__()
         self.fc1 = nn.Linear(num_inputs,num_perceptrons)
-        self.fc2 = nn.Linear(num_perceptrons,num_inputs)
+        self.fc2 = nn.Linear(num_perceptrons,2*num_inputs)
     def forward(self, x):
         dataV = self.fc2(F.relu(self.fc1(x)))
         y = F.softmax(dataV,dim=0)
-        return dataV
-
+        return y
 
 def normal(x,mu,sigma):
     return ( 2.*np.pi*sigma**2. )**-.5 * np.exp( -.5 * (x-mu)**2. / sigma**2. )
@@ -26,21 +25,33 @@ def normal(x,mu,sigma):
 def nntraining(num_inputs,num_perceptrons,x,y,labels):
     """plt.plot(x,y,".")"""
      
-    criterion = nn.CrossEntropyLoss()
-    net = Net(num_perceptrons,num_inputs)
+    criterion = nn.NLLLoss()
+    net = Net(num_perceptrons,2*num_inputs)
     optimizer = optim.SGD(net.parameters(), lr=0.01, momentum=0.5)
 
-    print(labels)
     X, Y, labels = Variable(torch.FloatTensor([x]), requires_grad=True), Variable(torch.FloatTensor([y]), requires_grad=False), Variable(torch.FloatTensor([labels]), requires_grad=False)
+    print(net)
 
     for epoch in range(100):
+        data_train = np.vstack((x,y)).T
+        result = [None]*(len(x)+len(y))
+        result[::2] = x
+        result[1::2] = y
+        data_train_tensor = Variable(torch.FloatTensor([result]), requires_grad=True)
+        
         optimizer.zero_grad()
-        outputs = net(X)
-        loss = criterion(outputs, labels)
+        outputs = net(data_train_tensor[0])
+        outputs_list = outputs.tolist()
+        
+        np_arr = np.array(outputs_list)
+        
+        outputs_clean = np.reshape(np_arr,(num_inputs,4))
+        outputs_clean = Variable(torch.FloatTensor([outputs_clean]) , requires_grad=True)
+        long_labels = labels.long()
+        loss = criterion(outputs_clean[0], long_labels[0])
         loss.backward()
         optimizer.step()
-        """print("Epoch {} - loss: {}".format(epoch, loss.item()))"""
-
+        print("Epoch {} - loss: {}".format(epoch, loss.item()))
 
     return net
 
@@ -61,6 +72,8 @@ def KfoldCrossValidation(dataX,dataY,labels,kfold,num_perceptrons):
     trainingNN = nntraining(group_len,num_perceptrons,dataX,dataY,labels)
     bestNNModel = nntraining(group_len,num_perceptrons,dataX,dataY,labels)
     
+    test_append = [0] * num_zeros
+    
     for i in range(0,kfold,1):
         group_index_start = i*group_factor
         group_index_end   = (i+1)*group_factor
@@ -69,7 +82,7 @@ def KfoldCrossValidation(dataX,dataY,labels,kfold,num_perceptrons):
         labels_train = labels
         dataX_list  = dataX_train.tolist()
         dataY_list  = dataY_train.tolist()
-        labels_list = labels_train.tolist() 
+        labels_list = labels_train 
         dataX_test   = dataX[group_index_start:group_index_end]
         dataY_test   = dataY[group_index_start:group_index_end]
         labels_test  = labels[group_index_start:group_index_end]
@@ -78,7 +91,7 @@ def KfoldCrossValidation(dataX,dataY,labels,kfold,num_perceptrons):
         del labels_list[group_index_start:group_index_end]
         dataX_test_list  = dataX_test.tolist() + test_append
         dataY_test_list  = dataY_test.tolist() + test_append
-        labels_test_list = labels_test.tolist() + test_append 
+        labels_test_list = labels_test + test_append 
         trainingNN = nntraining(len(dataX_list),num_perceptrons,dataX_list,dataY_list,labels_list)
         loss = nnvalidate(trainingNN,dataX_test_list,dataY_test_list,labels_test_list)
         if loss < min_loss:
@@ -102,18 +115,10 @@ def Experiment(num_perceptrons):
         reader = csv.reader(f)
         labels = [tuple(row) for row in reader]
     
-    loss = nn.CrossEntropyLoss()
-    input = torch.randn(3, 5, requires_grad=True)
-    print(input)
-    target = torch.empty(3, dtype=torch.long).random_(4)
-    print(target)
-    output = loss(input, target)
-    print(output)
-    
     n = len(filedataX[0])
     filedataX = [float(i) for i in filedataX[0]]    
     filedataY = [float(j) for j in filedataY[0]]
-    labels    = [int(k) for k in labels[0]]
+    labels    = [int(k)-1 for k in labels[0]]
     dataSampleLength = int(len(filedataX)/10)
     Kfolds = 10
     filedataX = np.array(filedataX)
@@ -121,17 +126,8 @@ def Experiment(num_perceptrons):
     
     x = filedataX 
     y = filedataY
+
     
-    plt.scatter(filedataX,filedataY,c=labels, s=40, cmap='viridis')
-    plt.figure()
-    
-    neuralNet = nntraining(n,10,filedataX,filedataY,labels)
-    outputNN = neuralNet(x)
-    plt.scatter(outputNN,filedataY)
-    plt.figure()
-    
-    
-    """
     trainedNN = KfoldCrossValidation(x[0:dataSampleLength],y[0:dataSampleLength],labels[0:dataSampleLength],Kfolds,num_perceptrons)
 
     batchLength = dataSampleLength
@@ -151,10 +147,8 @@ def Experiment(num_perceptrons):
 
     lossMean = lossAvg / indexRange
     return lossMean
-    """
-    return 0
     
-for i in range(40):
+for i in range(1):
     lossMean = Experiment(i+1)
     print(" Loss mean with num_perceptrons : " , i , " loss mean : " , lossMean)
     
